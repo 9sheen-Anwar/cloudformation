@@ -1,0 +1,24 @@
+#Template Anatomy
+#Format Version
+#Description
+#Resources 
+
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Template to create S3 Bucket and EC2
+Resources:      #Required Field
+  CFS3Bucket: #Logical ID
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: cf-s3-bucket-1  #Physical ID
+  
+  CFEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: ami-053a45fff0a704a47
+      InstanceType: t2.micro
+ 
+
+
+
+

@@ -1,0 +1,192 @@
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Template to Create Autoscaling Group
+Metadata: 
+  AWS::CloudFormation::Interface: 
+    ParameterGroups:
+      - 
+        Label: 
+          default: "Compute Configurations"
+        Parameters: 
+          - InstanceTypeParam
+          - ImageIDParam
+      
+      # - 
+      #   Label: 
+      #     default: "Storage Configurations"
+      #   Parameters: 
+      #     - S3BucketNameParam
+Parameters:
+  ImageIDParam:
+    Description: Enter the Image ID
+    Type: String
+    Default: ami-053a45fff0a704a47
+    AllowedValues:
+      - ami-053a45fff0a704a47
+      - ami-07fa5275316057f54
+      - ami-04b4f1a9cf54c11d0
+  InstanceTypeParam:
+    Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro.
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - m1.small
+      - m1.large
+Resources:      #Required Field
+  webAppLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: webAppLaunchTemplate
+      LaunchTemplateData:
+        ImageId: !Ref ImageIDParam
+        InstanceType: !Ref InstanceTypeParam
+        UserData:
+          Fn::Base64: !Sub |
+            #!/bin/bash
+            yum update -y
+            yum install -y httpd
+            systemctl start httpd
+            systemctl enable httpd
+            echo '<center><h1>This is Nausheen instance that is successfully running the Apache Webserver!</h1></center>' > /var/www/html/index.html      
+  webAppASG:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Properties:
+      AutoScalingGroupName: webAppAutoScalingGroup
+      AvailabilityZones: 
+        - us-east-1a
+        - us-east-1b
+      DesiredCapacity: 2
+      LaunchTemplate:
+        LaunchTemplateId: !Ref webAppLaunchTemplate
+        Version: !GetAtt webAppLaunchTemplate.LatestVersionNumber
+      MaxSize: 2
+      MinSize: 1
+      VPCZoneIdentifier: 
+        - subnet-0c35602917949e34b
+        - subnet-07b828220bfe7deb3
+      TargetGroupARNs: 
+        - !Ref webAppLBTG
+  webAppLB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      IpAddressType: ipv4
+      Name: webAppLaoadBalancer
+      Subnets: 
+        - subnet-0c35602917949e34b
+        - subnet-07b828220bfe7deb3
+      Type: application
+  webAppListners:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      DefaultActions: 
+        - TargetGroupArn: !Ref webAppLBTG
+          Type: forward
+      LoadBalancerArn: !Ref webAppLB
+      Port: 80
+      Protocol: HTTP
+  webAppLBTG:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: webAppLBTargetGroup
+      Port: 80
+      Protocol: HTTP
+      TargetType: instance
+      VpcId: vpc-0cf0e5fb2d2686e8a
+#CloudWatch Log Group
+  webAppCWLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /aws/route53/webAppCWLogGroup
+      RetentionInDays: 1
+
+  webAppSNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: String
+
+  webAppSNSsubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      Endpoint: nausheenanwar39@gmail.com
+      Protocol: email
+      TopicArn: !Ref webAppSNSTopic
+  
+  webAppHostedZone:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      Name: web-app.com
+      QueryLoggingConfig: 
+        CloudWatchLogsLogGroupArn: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/route53/webAppCWLogGroup'  #FOrmat to write a CloudFormation CloudWatch log group ARN: "arn:aws:logs:<region>:<account-id>:log-group:<log-group-name>"
+      # VPCs:     #Required for private hosted zone
+      #   - VPC
+    DependsOn: webAppCWLogPolicy
+  
+  webAppRecordSet:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneName: web-app.com.
+      Name: 9sheen-vm.com
+      Region: String
+      ResourceRecords: 
+        - !GetAtt webAppLB.DNSName   #Fortmat short form: !GetAtt logicalNameOfResource.attributeName
+      TTL: '300'
+      Type: CNAME
+  
+  webAppCWLogPolicy:   #Hosted Zone need IAM policy to push logs to CW logs
+    Type: AWS::Logs::ResourcePolicy
+    Properties:
+      PolicyName: "LogResourcePolicy"
+      PolicyDocument: !Sub |
+        {
+          "Version": "2012-10-17",
+          "Statement": [
+            {
+              "Sid": "Route53LogsToCloudWatchLogs",
+              "Effect": "Allow",
+              "Principal": {
+                "Service": ["route53.amazonaws.com"]
+              },
+              "Action": [
+                "logs:CreateLogStream",
+                "logs:PutLogEvents"
+              ],
+              "Resource": "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/route53/webAppCWLogGroup/*"
+            }
+          ]
+        }
+    DependsOn: webAppCWLogGroup
+  # webAppCWalarm:
+  #   Type: AWS::CloudWatch::Alarm
+  #   Properties:
+  #     AlarmActions: 
+  #       - !Sub 'arn:aws:sns:${AWS::Region}:${AWS::AccountId}:webAppSNSTopic'
+  #     AlarmDescription: This alarm is triggered when EC2 reaches CPU threshold
+  #     AlarmName: webAppCWalarm
+  #     ComparisonOperator: GreaterThanOrEqualToThreshold
+  #     DatapointsToAlarm: 1
+  #     Dimensions: 
+  #       - Name: AutoScalingGroupName
+  #         Value: !Ref webAppASG   
+  #     EvaluationPeriods: 1
+  #     MetricName: CPUUtilization
+  #     Namespace: AWS/EC2
+  #     Period: 300
+  #     Statistic: Maximum
+  #     Threshold: 2
+  #     TreatMissingData: breaching
+
+
+  
+
+
+  
+
+
+
+
+
+    
+  
+  
+

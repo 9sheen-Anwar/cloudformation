@@ -1,0 +1,42 @@
+#Template Anatomy
+#Format Version
+#Description
+#Resources
+#Parameters 
+#Intrinsic Functions
+
+---
+AWSTemplateFormatVersion: "2010-09-09"
+Description: Template to create S3 Bucket and EC2 along with parameters section
+Parameters:
+  EC2AMIIDParam:
+    Description: Enter the Image ID
+    Type: String
+    Default: ami-053a45fff0a704a47
+    AllowedValues:
+      - ami-053a45fff0a704a47
+      - ami-07fa5275316057f54
+      - ami-04b4f1a9cf54c11d0
+  InstanceTypeParam:
+    Description: Enter t2.micro, m1.small, or m1.large. Default is t2.micro.
+    Type: String
+    Default: t2.micro
+    AllowedValues:
+      - t2.micro
+      - m1.small
+      - m1.large
+  S3BucketNameParam:
+    Description: Enter the bucket name # Here we are not providing default value and option as bucket name should be unique so whatever user input will be considered.
+    Type: String
+
+Resources:      #Required Field
+  CFS3Bucket: #Logical ID
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref S3BucketNameParam  #Physical ID
+  
+  CFEC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      ImageId: !Ref EC2AMIIDParam
+      InstanceType: !Ref InstanceTypeParam
